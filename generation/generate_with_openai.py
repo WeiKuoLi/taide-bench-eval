@@ -66,7 +66,7 @@ async def main(
     use_fast: bool = True,
     **kwargs
 ):
-    print('openai_api_key', openai_api_key)
+    print('openai_api_key', openai_api_key[:3]+'***')
     print('output_dir', output_dir)
     print('tokenizer_path', tokenizer_path)
     print('tasks', tasks)
