@@ -4,8 +4,11 @@ import os
 
 from datasets import load_dataset
 from transformers import AutoTokenizer
-import openai
+import openai 
 from tqdm import tqdm
+import torch
+
+
 
 def auto_load_dataset(dataset_path: str, dataset_split: str = 'train'):
     if dataset_path.endswith('.csv'):
@@ -14,7 +17,7 @@ def auto_load_dataset(dataset_path: str, dataset_split: str = 'train'):
 
 
 def add_template_to_instruction(inst: str, tokenizer: AutoTokenizer):
-    insts = [#{ 'role': 'system', 'content': '你是一個只會說台灣繁體中文的AI助理。'}, # you can add system prompt here
+    insts = [#{ 'role': 'system', 'content': '你是一個說台灣繁體中文的AI助理。'}, # you can add system prompt here
                                             {'role': 'user', 'content': inst}
                                             ]
     result = tokenizer.apply_chat_template(insts, 
