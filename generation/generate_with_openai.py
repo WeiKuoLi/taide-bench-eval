@@ -7,8 +7,8 @@ from transformers import AutoTokenizer
 import openai 
 from tqdm import tqdm
 import torch
-
-
+import argparse
+from openai import OpenAI
 
 def auto_load_dataset(dataset_path: str, dataset_split: str = 'train'):
     if dataset_path.endswith('.csv'):
@@ -16,23 +16,28 @@ def auto_load_dataset(dataset_path: str, dataset_split: str = 'train'):
     return load_dataset(dataset_path)[dataset_split]
 
 
-def add_template_to_instruction(inst: str, tokenizer: AutoTokenizer):
-    insts = [#{ 'role': 'system', 'content': '你是一個說台灣繁體中文的AI助理。'}, # you can add system prompt here
+def add_template_to_instruction(inst: str):
+    insts = [{ 'role': 'system', 'content': '你是一個說台灣繁體中文的AI助理。'}, # you can add system prompt here
                                             {'role': 'user', 'content': inst}
                                             ]
+    '''
     result = tokenizer.apply_chat_template(insts, 
                                            tokenize=False,
-                                           add_generation_prompt=True)
-    return {'prompt': result}
+                                           add_generation_prompt=True)'''
+    return {'prompt': insts}
 
+ 
+ 
+async def run_openai_inference(prompt, **kwargs):
+    #client = AsyncOpenAI() 
+    client = OpenAI()
 
-async def run_openai_inference(prompt: str, **kwargs):
-    response = await openai.ChatCompletion.acreate(
-        model="gpt-3.5-turbo", 
-        messages=[{"role": "user", "content": prompt}],
-        **kwargs
+    response = client.chat.completions.create(
+    #response = await client.chat.completions.async_create(
+        model="gpt-3.5-turbo",
+        messages=prompt
     )
-    return response.choices[0]['message']['content']
+    return response.choices[0].message.content
 
 
 @torch.inference_mode()
@@ -40,14 +45,12 @@ async def main(
     openai_api_key: str,
     output_dir: str,
     tokenizer_path: str = 'google/mt5-small',
-    dataset_path: str = 'TLLM/eval-geval',
-    tasks: list[str] = ['vicuna_tw',
-                         'summary',
+    dataset_path: str = 'taide/taide-bench',
+    tasks: list[str] = ['summary',
                          'en2zh',
                          'zh2en',
                          'letter',
-                         'essay',
-                         'vicuna_en',
+                         'essay', 
                          ],
     batch_size: int = 4,
     use_fast: bool = True,
@@ -61,13 +64,13 @@ async def main(
     os.makedirs(output_dir, exist_ok=True)
     openai.api_key = openai_api_key
 
-    tokenizer_path = tokenizer_path
-    tokenizer = AutoTokenizer.from_pretrained(
-        tokenizer_path,
-        use_fast=use_fast
-    )
-    print(tokenizer.pad_token, tokenizer.eos_token)
-    tokenizer.pad_token = tokenizer.eos_token
+    #tokenizer_path = tokenizer_path
+    #tokenizer = AutoTokenizer.from_pretrained(
+    #    tokenizer_path,
+    #    use_fast=use_fast
+    #)
+    #print(tokenizer.pad_token, tokenizer.eos_token)
+    #tokenizer.pad_token = tokenizer.eos_token
 
     for task in tqdm(tasks):
         if os.path.exists(f'{output_dir}/resp_{task}.jsonl'):
@@ -76,19 +79,20 @@ async def main(
         dataset = load_dataset(dataset_path, task)['train']
         dataset = dataset.map(
             lambda x: add_template_to_instruction(
-                x['prompt'], tokenizer),
+                x['prompt']),
             desc='Adding template to prompt')
 
         result = []
         for i in tqdm(range(0, len(dataset), batch_size)):
             batch = dataset[i : i + batch_size]
-            prompts = [x['prompt'] for x in batch]
+            #print(batch)
+            prompts = batch['prompt']
 
             tasks = [run_openai_inference(prompt, max_tokens=kwargs.pop('max_new_tokens', 512), temperature=0.7, **kwargs) for prompt in prompts]
             batch_results = await asyncio.gather(*tasks)
 
             result.extend([{'generated_text': text} for text in batch_results])
-
+            #break
         print(result[:4])
         assert len(result) == len(dataset)
 
@@ -108,7 +112,13 @@ async def main(
                     json.dumps(x, ensure_ascii=False) + '\n'
                 )
 
-if __name__ == '__main__':
-    import fire
 
-    fire.Fire(main)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("openai_api_key", type=str, help="OpenAI API Key")
+    parser.add_argument("output_path", type=str, help="Output Path")
+    parser.add_argument("--tasks", nargs='+', type=str, help="List of tasks")
+
+    args = parser.parse_args()
+    asyncio.run(main(args.openai_api_key, args.output_path, tasks=args.tasks))
