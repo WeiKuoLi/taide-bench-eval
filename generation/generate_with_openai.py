@@ -8,7 +8,7 @@ import openai
 from tqdm import tqdm
 import torch
 import argparse
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 def auto_load_dataset(dataset_path: str, dataset_split: str = 'train'):
     if dataset_path.endswith('.csv'):
@@ -28,16 +28,26 @@ def add_template_to_instruction(inst: str):
 
  
  
-async def run_openai_inference(prompt, **kwargs):
+async def run_openai_inference(prompt, model='gpt-3.5-turbo', **kwargs):
     #client = AsyncOpenAI() 
-    client = OpenAI()
-
-    response = client.chat.completions.create(
-    #response = await client.chat.completions.async_create(
-        model="gpt-3.5-turbo",
-        messages=prompt
-    )
-    return response.choices[0].message.content
+    client = AsyncOpenAI()
+    for _ in range(3):
+        try:
+            response = await client.chat.completions.create(
+            #response = await client.chat.completions.async_create(
+                model=model,
+                messages=prompt,
+                temperature=0.2,
+                timeout=180,
+                seed=42
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            # time.sleep(1)
+            print(e)
+            await asyncio.sleep(10)
+    return ""
+     
 
 
 @torch.inference_mode()
